@@ -1,0 +1,9 @@
+.DS_Store
+.uv-cache/
+.venv/
+__pycache__/
+plots/
+plots_hf/
+data/
+*.zip
+Subscriptions/
