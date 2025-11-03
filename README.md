@@ -5,18 +5,18 @@ activity, readiness, and Renpho scale measurements.
 
 ## Quick start
 
-The plotting workflow lives in `scripts/plot_daily_spo2.py`. It expects:
+The plotting workflow lives in `scripts/analyze_oura.py`. It expects:
 
-1. The `App Data/` directory from an Oura data export (containing
-   `dailyspo2.csv`, `dailyreadiness.csv`, etc.).
-2. One or more CSVs exported from your scale (e.g. Renpho), each provided via
-   the `--body-file` flag.
+1. The `data/oura/` folder populated with the Oura export CSVs
+   (`dailyspo2.csv`, `dailyreadiness.csv`, etc.).
+2. One or more scale CSVs (e.g. Renpho) supplied via the `--body-file`
+   flag—by default we use `data/scale/body.csv`.
 
 With [uv](https://github.com/astral-sh/uv) installed, you can regenerate every
 plot and correlation table with:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run scripts/plot_daily_spo2.py \
+UV_CACHE_DIR=.uv-cache uv run scripts/analyze_oura.py \
   --oura-app-data data/oura \
   --body-file data/scale/body.csv \
   --output-dir plots
@@ -42,7 +42,7 @@ repository—e.g. `your-account/oura-data` containing `oura/*.csv` and
 
 ```bash
 export HF_TOKEN=...  # set to a read token with access to the private repo
-UV_CACHE_DIR=.uv-cache uv run --with huggingface_hub scripts/plot_daily_spo2.py \
+UV_CACHE_DIR=.uv-cache uv run --with huggingface_hub scripts/analyze_oura.py \
   --hf-repo-id your-account/oura-data \
   --output-dir plots
 ```
