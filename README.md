@@ -31,7 +31,7 @@ All output PNGs land in the directory provided via `--output-dir` (default
 `plots/`). Re-run the command whenever you refresh your exports.
 
 ## Methodology
-Let's ensure we don't double report. 
+
 - **Devices & cadence** – [Oura Ring Gen 3](https://support.ouraring.com/hc/en-us/articles/4409072131091-Oura-Ring-Generation-3) nightly exports
   (sleep, readiness, activity, sleep model, SpO₂) plus [Mi Body Composition Scale 2](https://www.mi.com/uk/product/mi-body-composition-scale-2/)
   weights logged frequently from November 2020 through November 2024 (≈4 readings/week).
