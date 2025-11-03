@@ -5,4 +5,4 @@ from __future__ import annotations
 from datetime import date
 
 # Default cutoff for generating the "pre-cutoff" deep sleep plot.
-DEFAULT_PRE_CUTOFF = date(2023, 1, 31)
+DEFAULT_PRE_CUTOFF = date(2022, 1, 1)

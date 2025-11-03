@@ -1,139 +1,72 @@
-"""Helpers for resolving where to load Oura and scale data from."""
+"""Simple helpers for locating wearable and scale CSV files on disk."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
+
+DEFAULT_OURA_DIR = Path("data/oura")
+DEFAULT_BODY_FILES = (Path("data/scale/body.csv"),)
+
+# Expected CSV filenames from the Oura export directory.
+OURA_FILES = {
+    "daily_spo2": "dailyspo2.csv",
+    "daily_readiness": "dailyreadiness.csv",
+    "daily_sleep": "dailysleep.csv",
+    "daily_activity": "dailyactivity.csv",
+    "sleep_model": "sleepmodel.csv",
+}
 
 
-@dataclass(frozen=True)
-class WearablePaths:
-    """Absolute paths to the wearable CSV exports we rely on (Oura format)."""
+def resolve_wearable_paths(base_dir: Path) -> dict[str, Path]:
+    """Expand the provided directory and ensure all Oura CSVs exist."""
+    directory = base_dir.expanduser().resolve()
+    if not directory.is_dir():
+        raise SystemExit(f"Oura export directory not found: {directory}")
 
-    daily_spo2: Path
-    daily_readiness: Path
-    daily_sleep: Path
-    daily_activity: Path
-    sleep_model: Path
-
-    @classmethod
-    def from_directory(cls, directory: Path) -> "WearablePaths":
-        base = directory.expanduser().resolve()
-        return cls(
-            daily_spo2=base / "dailyspo2.csv",
-            daily_readiness=base / "dailyreadiness.csv",
-            daily_sleep=base / "dailysleep.csv",
-            daily_activity=base / "dailyactivity.csv",
-            sleep_model=base / "sleepmodel.csv",
-        )
+    resolved: dict[str, Path] = {}
+    for key, filename in OURA_FILES.items():
+        candidate = directory / filename
+        if not candidate.exists():
+            raise SystemExit(
+                f"Expected '{filename}' in {directory}, but it is missing. "
+                "Run another export from the Oura app."
+            )
+        resolved[key] = candidate
+    return resolved
 
 
-@dataclass(frozen=True)
-class DataContext:
-    """Resolved locations for wearable exports and optional scale files."""
+def resolve_body_files(body_files: Sequence[Path]) -> list[Path]:
+    """Expand and deduplicate scale CSV paths, warning on missing files."""
+    resolved: list[Path] = []
+    for path in body_files:
+        candidate = path.expanduser().resolve()
+        if candidate.exists():
+            resolved.append(candidate)
+        else:
+            print(f"Warning: body composition file not found, skipping: {candidate}")
 
-    wearable: WearablePaths
-    body_files: list[Path]
-
-
-@dataclass(frozen=True)
-class HuggingFaceOptions:
-    """Configuration for optionally pulling data from the Hugging Face Hub."""
-
-    repo_id: str | None
-    revision: str | None
-    token: str | None
-    oura_subdir: str
-    scale_files: tuple[str, ...]
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.repo_id)
-
-
-def _snapshot_hf_dataset(options: HuggingFaceOptions) -> Path:
-    """Download a dataset snapshot and return its local path."""
-    if not options.repo_id:
-        raise ValueError("Cannot snapshot Hugging Face dataset without a repo_id.")
-
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:  # pragma: no cover - optional dependency
-        raise SystemExit(
-            "huggingface_hub is required for --hf-repo-id support. "
-            "Install it via `uv run --with huggingface_hub ...`."
-        ) from exc
-
-    return Path(
-        snapshot_download(
-            repo_id=options.repo_id,
-            repo_type="dataset",
-            revision=options.revision,
-            token=options.token,
-        )
-    )
+    unique_paths: list[Path] = []
+    for candidate in resolved:
+        if candidate not in unique_paths:
+            unique_paths.append(candidate)
+    return unique_paths
 
 
 def resolve_data_paths(
     *,
     oura_app_data: Path | None,
-    body_files: Sequence[Path],
-    hf_options: HuggingFaceOptions,
-) -> DataContext:
-    """Resolve data sources based on CLI inputs."""
+    body_files: Sequence[Path] | None = None,
+) -> tuple[dict[str, Path], list[Path]]:
+    """Return absolute paths for the wearable CSVs and any scale CSVs."""
+    wearable_paths = resolve_wearable_paths(oura_app_data or DEFAULT_OURA_DIR)
 
-    resolved_body_files: list[Path] = []
-    for body_path in body_files:
-        expanded = body_path.expanduser().resolve()
-        if expanded.exists():
-            resolved_body_files.append(expanded)
-        else:
-            print(f"Warning: body composition file not found, skipping: {expanded}")
+    if body_files:
+        resolved_body = resolve_body_files(body_files)
+    else:
+        resolved_body = resolve_body_files(DEFAULT_BODY_FILES)
 
-    oura_dir: Path | None = None
+    if not resolved_body:
+        print("Warning: no body composition files available; body plots will be skipped.")
 
-    if hf_options.enabled:
-        repo_path = _snapshot_hf_dataset(hf_options)
-        remote_oura_dir = (repo_path / hf_options.oura_subdir).resolve()
-        if not remote_oura_dir.is_dir():
-            raise SystemExit(
-                f"Oura data directory '{hf_options.oura_subdir}' not found in "
-                f"Hugging Face dataset {hf_options.repo_id}."
-            )
-        oura_dir = remote_oura_dir
-
-        for relative_path in hf_options.scale_files:
-            candidate = (repo_path / relative_path).resolve()
-            if candidate.exists():
-                resolved_body_files.append(candidate)
-            else:
-                print(
-                    f"Warning: scale file '{relative_path}' not found in "
-                    f"Hugging Face dataset {hf_options.repo_id}."
-                )
-
-    if oura_app_data is not None:
-        local_dir = oura_app_data.expanduser().resolve()
-        if not local_dir.is_dir():
-            raise SystemExit(f"Oura app data directory not found: {local_dir}")
-        # Local data takes precedence when both sources are provided.
-        oura_dir = local_dir
-
-    if oura_dir is None:
-        raise SystemExit(
-            "No Oura data directory available. Provide --oura-app-data or "
-            "--hf-repo-id with --hf-oura-subdir."
-        )
-
-    wearable_paths = WearablePaths.from_directory(oura_dir)
-    if not wearable_paths.daily_spo2.exists():
-        raise SystemExit(
-            f"dailyspo2.csv not found in {oura_dir}. Check that the export is complete."
-        )
-
-    unique_body_files = list(dict.fromkeys(resolved_body_files))
-    if not unique_body_files:
-        print("Warning: no body composition files provided; body-weight plots will be skipped.")
-
-    return DataContext(wearable=wearable_paths, body_files=unique_body_files)
+    return wearable_paths, resolved_body

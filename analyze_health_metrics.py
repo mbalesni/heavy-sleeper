@@ -6,12 +6,13 @@ from __future__ import annotations
 import argparse
 from datetime import date
 from pathlib import Path
+import re
 from typing import Sequence
 
 import numpy as np
 
 from health_analysis.constants import DEFAULT_PRE_CUTOFF
-from health_analysis.data_sources import HuggingFaceOptions, resolve_data_paths
+from health_analysis.data_sources import resolve_data_paths
 from health_analysis.loaders import (
     load_body_metrics,
     load_daily_activity_metrics,
@@ -22,7 +23,13 @@ from health_analysis.loaders import (
     load_spo2_breathing_index,
     load_spo2_records,
 )
-from health_analysis.plotting import PlotPaths, build_plot_paths, plot_dual_series, plot_single_series
+from health_analysis.plotting import (
+    PlotPaths,
+    build_plot_paths,
+    plot_correlation_heatmap,
+    plot_dual_series,
+    plot_single_series,
+)
 from health_analysis.processing import (
     aggregate_daily,
     aggregate_weekly,
@@ -33,6 +40,26 @@ from health_analysis.processing import (
 )
 
 
+SLEEP_METRIC_CONFIG: dict[str, tuple[str, str]] = {
+    "Sleep Efficiency (%)": ("Oura: Efficiency", "%"),
+    "Sleep Restless Periods": ("Oura: Restless Periods", "count"),
+    "Sleep REM Duration (min)": ("Oura: REM Duration (min)", "min"),
+    "Sleep Movement Index": ("Oura: Movement Index", "index"),
+    "Sleep Light Duration (min)": ("Oura: Light Sleep Duration (min)", "min"),
+    "Sleep Awake Time (min)": ("Oura: Awake Time (min)", "min"),
+    "Sleep Average Breath (rpm)": ("Oura: Average Breath (rpm)", "rpm"),
+    "Sleep Deep Sleep Duration (min)": ("Oura: Deep Sleep Duration (min)", "min"),
+    "Sleep Contributor: Restfulness": ("Oura: Restfulness Score", "score"),
+}
+
+TARGET_METRIC_CONFIG: dict[str, tuple[str, str]] = {
+    "SpO2": ("SpO2", "%"),
+    "Weight": ("Weight", "kg"),
+    "Body Fat %": ("Body Fat %", "%"),
+    "Visceral Fat Index": ("Visceral Fat Index", "index"),
+}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Plot wearable SpO₂ trends and correlations against readiness, sleep, activity, and scale data.",
@@ -40,7 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--oura-app-data",
         type=Path,
-        help="Directory containing the wearable (Oura-format) CSV exports (dailyspo2.csv, dailyreadiness.csv, etc.).",
+        default=None,
+        help=(
+            "Directory containing the wearable (Oura-format) CSV exports. "
+            "Defaults to data/oura when omitted."
+        ),
     )
     parser.add_argument(
         "--body-file",
@@ -49,7 +80,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=[],
         metavar="PATH",
-        help="Body composition CSV from the scale. Repeat this flag to add multiple files.",
+        help=(
+            "Body composition CSV from the scale. Repeat this flag for multiple files. "
+            "Defaults to data/scale/body.csv when omitted."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -66,31 +100,6 @@ def build_parser() -> argparse.ArgumentParser:
             "deep sleep vs visceral fat comparison (default: 2023-01-31)."
         ),
     )
-    parser.add_argument(
-        "--hf-repo-id",
-        help="Optional Hugging Face dataset repository ID to download data from (e.g., username/dataset).",
-    )
-    parser.add_argument(
-        "--hf-revision",
-        default=None,
-        help="Optional revision (branch/tag/commit) for the Hugging Face dataset repository.",
-    )
-    parser.add_argument(
-        "--hf-token",
-        default=None,
-        help="Hugging Face token used for private dataset access (default: read from HF_TOKEN env var).",
-    )
-    parser.add_argument(
-        "--hf-oura-subdir",
-        default="oura",
-        help="Relative path inside the Hugging Face dataset containing the wearable CSV exports.",
-    )
-    parser.add_argument(
-        "--hf-scale-files",
-        action="append",
-        default=["scale/body.csv"],
-        help="Relative path(s) inside the Hugging Face dataset for scale CSV files. Repeat to add more.",
-    )
     return parser
 
 
@@ -101,25 +110,16 @@ def main() -> None:
     output_dir = args.output_dir.expanduser().resolve()
     plot_paths: PlotPaths = build_plot_paths(output_dir)
 
-    hf_options = HuggingFaceOptions(
-        repo_id=args.hf_repo_id,
-        revision=args.hf_revision,
-        token=args.hf_token,
-        oura_subdir=args.hf_oura_subdir,
-        scale_files=tuple(args.hf_scale_files),
-    )
-
-    context = resolve_data_paths(
+    wearable_paths, body_files = resolve_data_paths(
         oura_app_data=args.oura_app_data,
-        body_files=args.body_files,
-        hf_options=hf_options,
+        body_files=args.body_files or None,
     )
 
-    spo2_records = load_spo2_records(context.wearable.daily_spo2)
+    spo2_records = load_spo2_records(wearable_paths["daily_spo2"])
     if not spo2_records:
         raise SystemExit("No blood oxygenation records found in the export.")
 
-    readiness_records = load_resting_hr_records(context.wearable.daily_readiness)
+    readiness_records = load_resting_hr_records(wearable_paths["daily_readiness"])
 
     daily_days, daily_spo2 = aggregate_daily(spo2_records)
     plot_single_series(
@@ -148,22 +148,22 @@ def main() -> None:
     }
 
     # Additional SpO2-derived metrics.
-    bdi_records = load_spo2_breathing_index(context.wearable.daily_spo2)
+    bdi_records = load_spo2_breathing_index(wearable_paths["daily_spo2"])
     if bdi_records:
         bdi_days, bdi_values = aggregate_daily(bdi_records)
         weekly_bdi_weeks, weekly_bdi_values = aggregate_weekly(bdi_days, bdi_values)
         if weekly_bdi_weeks:
             weekly_series["Breathing Disturbance Index"] = (weekly_bdi_weeks, weekly_bdi_values)
 
-    readiness_metrics = load_daily_readiness_metrics(context.wearable.daily_readiness)
-    sleep_metrics = load_daily_sleep_metrics(context.wearable.daily_sleep)
-    activity_metrics = load_daily_activity_metrics(context.wearable.daily_activity)
-    sleep_model_metrics = load_sleep_model_metrics(context.wearable.sleep_model)
+    readiness_metrics = load_daily_readiness_metrics(wearable_paths["daily_readiness"])
+    sleep_metrics = load_daily_sleep_metrics(wearable_paths["daily_sleep"])
+    activity_metrics = load_daily_activity_metrics(wearable_paths["daily_activity"])
+    sleep_model_metrics = load_sleep_model_metrics(wearable_paths["sleep_model"])
 
     for metric_map in (readiness_metrics, sleep_metrics, activity_metrics, sleep_model_metrics):
         _register_weekly_metrics(metric_map.items(), weekly_series)
 
-    body_metrics = load_body_metrics(context.body_files)
+    body_metrics = load_body_metrics(body_files)
     body_label_map = {
         "weight": "Weight",
         "fatRate": "Body Fat %",
@@ -186,6 +186,11 @@ def main() -> None:
     )
 
     restfulness_summary = _plot_restfulness_comparisons(
+        weekly_series,
+        plot_paths,
+    )
+
+    sleep_metric_summary = _plot_sleep_metric_comparisons(
         weekly_series,
         plot_paths,
     )
@@ -220,6 +225,13 @@ def main() -> None:
         print("Restfulness weekly correlations:")
         for label, corr, count in restfulness_summary:
             print(f"  Restfulness vs {label}: {corr:.3f} (n={count})")
+
+    if sleep_metric_summary:
+        print("Extended sleep metric correlations:")
+        for metric_label, target_label, corr, count in sorted(
+            sleep_metric_summary, key=lambda item: abs(item[2]), reverse=True
+        ):
+            print(f"  {metric_label} vs {target_label}: {corr:.3f} (n={count})")
 
     if deep_sleep_summary:
         print("Deep sleep weekly correlations:")
@@ -383,6 +395,74 @@ def _plot_restfulness_comparisons(
     return results
 
 
+def _plot_sleep_metric_comparisons(
+    weekly_series: dict[str, tuple[list[date], list[float]]],
+    plot_paths: PlotPaths,
+) -> list[tuple[str, str, float, int]]:
+    metrics_available = [
+        (key, label, unit) for key, (label, unit) in SLEEP_METRIC_CONFIG.items() if key in weekly_series
+    ]
+    if not metrics_available:
+        print("No extended sleep metrics available for comparison plots.")
+        return []
+
+    targets_available = [
+        (key, label, unit)
+        for key, (label, unit) in TARGET_METRIC_CONFIG.items()
+        if key in weekly_series
+    ]
+    if not targets_available:
+        print("No comparison targets available for sleep metric plots.")
+        return []
+
+    corr_matrix = np.full((len(metrics_available), len(targets_available)), np.nan)
+    summary: list[tuple[str, str, float, int]] = []
+
+    for metric_idx, (metric_key, metric_label, metric_unit) in enumerate(metrics_available):
+        metric_weeks, metric_values = weekly_series[metric_key]
+        for target_idx, (target_key, target_label, target_unit) in enumerate(targets_available):
+            target_weeks, target_values = weekly_series[target_key]
+            weeks_aligned, metric_aligned, target_aligned = align_weekly_series(
+                metric_weeks,
+                metric_values,
+                target_weeks,
+                target_values,
+            )
+
+            if len(weeks_aligned) < 2:
+                continue
+
+            output_path = plot_paths.sleep_metric_dir / (
+                f"{_slugify(metric_label)}_vs_{_slugify(target_label)}.png"
+            )
+            plot_dual_series(
+                weeks_aligned,
+                metric_aligned,
+                target_aligned,
+                output_path,
+                primary_label=metric_label,
+                primary_unit=metric_unit,
+                secondary_label=target_label,
+                secondary_unit=target_unit,
+            )
+            print(f"Saved plot to {output_path}")
+
+            corr = float(np.corrcoef(metric_aligned, target_aligned)[0, 1])
+            corr_matrix[metric_idx, target_idx] = corr
+            summary.append((metric_label, target_label, corr, len(weeks_aligned)))
+
+    if summary and np.isfinite(corr_matrix).any():
+        plot_correlation_heatmap(
+            corr_matrix,
+            [label for _, label, _ in metrics_available],
+            [label for _, label, _ in targets_available],
+            plot_paths.sleep_metric_heatmap,
+        )
+        print(f"Saved heatmap to {plot_paths.sleep_metric_heatmap}")
+
+    return summary
+
+
 def _plot_deep_sleep_vs_visceral(
     weekly_series: dict[str, tuple[list[date], list[float]]],
     plot_paths: PlotPaths,
@@ -482,6 +562,12 @@ def _compute_lagged_metrics(
             results.append(("Weight (week t) vs SpO2 (week t+1)", corr, count))
 
     return results
+
+
+def _slugify(label: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", label.lower())
+    slug = slug.strip("_")
+    return slug or "metric"
 
 
 if __name__ == "__main__":

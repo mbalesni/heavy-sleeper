@@ -13,14 +13,15 @@ The analysis entrypoint is `analyze_health_metrics.py`. It expects:
    flag—by default we use `data/scale/body.csv`.
 
 With [uv](https://github.com/astral-sh/uv) installed, you can regenerate every
-plot and correlation table with:
+plot and correlation table with the defaults baked into the script:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run analyze_health_metrics.py \
-  --oura-app-data data/oura \
-  --body-file data/scale/body.csv \
-  --output-dir plots
+UV_CACHE_DIR=.uv-cache uv run analyze_health_metrics.py --output-dir plots
 ```
+
+The script falls back to `data/oura/` for the wearable export CSVs and
+`data/scale/body.csv` for the scale data. Override them with `--oura-app-data`
+and `--body-file` when you want to analyse alternate exports.
 
 The script produces:
 
@@ -33,19 +34,3 @@ The script produces:
 
 All output PNGs land in the directory provided via `--output-dir` (default
 `plots/`). Re-run the command whenever you refresh your exports.
-
-## Hugging Face dataset workflow
-
-If you upload the same directory contents to a (private) Hugging Face dataset
-repository—e.g. `your-account/oura-data` containing `oura/*.csv` and
-`scale/body.csv`—the script can download it on the fly:
-
-```bash
-export HF_TOKEN=...  # set to a read token with access to the private repo
-UV_CACHE_DIR=.uv-cache uv run --with huggingface_hub analyze_health_metrics.py \
-  --hf-repo-id your-account/oura-data \
-  --output-dir plots
-```
-
-You can still mix in local overrides with `--oura-app-data` or additional
-`--body-file` flags if you want to swap out individual files.

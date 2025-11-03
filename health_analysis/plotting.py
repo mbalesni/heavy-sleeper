@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -21,10 +22,14 @@ class PlotPaths:
     weekly_restfulness_vs_body_fat: Path
     weekly_deep_sleep_vs_visceral_fat: Path
     weekly_deep_sleep_vs_visceral_fat_pre_cutoff: Path
+    sleep_metric_dir: Path
+    sleep_metric_heatmap: Path
 
 
 def build_plot_paths(output_dir: Path) -> PlotPaths:
     output_dir.mkdir(parents=True, exist_ok=True)
+    sleep_metric_dir = output_dir / "sleep_metrics"
+    sleep_metric_dir.mkdir(exist_ok=True)
     return PlotPaths(
         daily_spo2=output_dir / "daily_spo2.png",
         weekly_spo2_rolling=output_dir / "weekly_spo2_rolling.png",
@@ -37,6 +42,8 @@ def build_plot_paths(output_dir: Path) -> PlotPaths:
         weekly_deep_sleep_vs_visceral_fat=output_dir / "weekly_deep_sleep_vs_visceral_fat.png",
         weekly_deep_sleep_vs_visceral_fat_pre_cutoff=output_dir
         / "weekly_deep_sleep_vs_visceral_fat_pre_cutoff.png",
+        sleep_metric_dir=sleep_metric_dir,
+        sleep_metric_heatmap=output_dir / "sleep_metric_correlations.png",
     )
 
 
@@ -120,3 +127,50 @@ def plot_dual_series(
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close()
+
+
+def plot_correlation_heatmap(
+    matrix: np.ndarray,
+    row_labels: list[str],
+    column_labels: list[str],
+    output_path: Path,
+) -> None:
+    fig_width = max(6, len(column_labels) * 1.5)
+    fig_height = max(4, len(row_labels) * 0.9)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    masked = np.ma.masked_invalid(matrix)
+    cmap = plt.colormaps.get("coolwarm")
+    im = ax.imshow(masked, cmap=cmap, vmin=-1, vmax=1)
+    fig.colorbar(im, ax=ax, label="Pearson r", fraction=0.046, pad=0.04)
+
+    ax.set_xticks(range(len(column_labels)))
+    ax.set_xticklabels(column_labels, rotation=45, ha="right")
+    ax.set_yticks(range(len(row_labels)))
+    ax.set_yticklabels(row_labels)
+
+    for row_idx, row_label in enumerate(row_labels):
+        for col_idx, col_label in enumerate(column_labels):
+            value = matrix[row_idx, col_idx]
+            if np.isnan(value):
+                continue
+            ax.text(
+                col_idx,
+                row_idx,
+                f"{value:.2f}",
+                ha="center",
+                va="center",
+                color="black",
+                fontsize=8,
+            )
+
+    max_row_len = max((len(label) for label in row_labels), default=0)
+    max_col_len = max((len(label) for label in column_labels), default=0)
+    left_margin = max(0.08, min(0.26, 0.08 + 0.004 * max_row_len))
+    bottom_margin = max(0.10, min(0.28, 0.10 + 0.006 * max_col_len))
+    right_margin = 0.985
+    top_margin = 0.97
+    fig.subplots_adjust(left=left_margin, bottom=bottom_margin, right=right_margin, top=top_margin)
+
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
