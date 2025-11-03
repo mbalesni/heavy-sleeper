@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyse Oura Ring exports and generate plots/correlations."""
+"""Analyse wearable and scale exports and generate plots/correlations."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from typing import Sequence
 
 import numpy as np
 
-from oura_analysis.constants import DEFAULT_PRE_CUTOFF
-from oura_analysis.data_sources import HuggingFaceOptions, resolve_data_paths
-from oura_analysis.loaders import (
+from health_analysis.constants import DEFAULT_PRE_CUTOFF
+from health_analysis.data_sources import HuggingFaceOptions, resolve_data_paths
+from health_analysis.loaders import (
     load_body_metrics,
     load_daily_activity_metrics,
     load_daily_readiness_metrics,
@@ -22,8 +22,8 @@ from oura_analysis.loaders import (
     load_spo2_breathing_index,
     load_spo2_records,
 )
-from oura_analysis.plotting import PlotPaths, build_plot_paths, plot_dual_series, plot_single_series
-from oura_analysis.processing import (
+from health_analysis.plotting import PlotPaths, build_plot_paths, plot_dual_series, plot_single_series
+from health_analysis.processing import (
     aggregate_daily,
     aggregate_weekly,
     align_weekly_series,
@@ -35,12 +35,12 @@ from oura_analysis.processing import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Plot Oura SpO₂ trends and correlations against readiness, sleep, activity, and body data.",
+        description="Plot wearable SpO₂ trends and correlations against readiness, sleep, activity, and scale data.",
     )
     parser.add_argument(
         "--oura-app-data",
         type=Path,
-        help="Directory containing Oura CSV exports (dailyspo2.csv, dailyreadiness.csv, etc.).",
+        help="Directory containing the wearable (Oura-format) CSV exports (dailyspo2.csv, dailyreadiness.csv, etc.).",
     )
     parser.add_argument(
         "--body-file",
@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--hf-oura-subdir",
         default="oura",
-        help="Relative path inside the Hugging Face dataset containing the Oura CSV exports.",
+        help="Relative path inside the Hugging Face dataset containing the wearable CSV exports.",
     )
     parser.add_argument(
         "--hf-scale-files",
@@ -115,11 +115,11 @@ def main() -> None:
         hf_options=hf_options,
     )
 
-    spo2_records = load_spo2_records(context.oura.daily_spo2)
+    spo2_records = load_spo2_records(context.wearable.daily_spo2)
     if not spo2_records:
         raise SystemExit("No blood oxygenation records found in the export.")
 
-    readiness_records = load_resting_hr_records(context.oura.daily_readiness)
+    readiness_records = load_resting_hr_records(context.wearable.daily_readiness)
 
     daily_days, daily_spo2 = aggregate_daily(spo2_records)
     plot_single_series(
@@ -148,17 +148,17 @@ def main() -> None:
     }
 
     # Additional SpO2-derived metrics.
-    bdi_records = load_spo2_breathing_index(context.oura.daily_spo2)
+    bdi_records = load_spo2_breathing_index(context.wearable.daily_spo2)
     if bdi_records:
         bdi_days, bdi_values = aggregate_daily(bdi_records)
         weekly_bdi_weeks, weekly_bdi_values = aggregate_weekly(bdi_days, bdi_values)
         if weekly_bdi_weeks:
             weekly_series["Breathing Disturbance Index"] = (weekly_bdi_weeks, weekly_bdi_values)
 
-    readiness_metrics = load_daily_readiness_metrics(context.oura.daily_readiness)
-    sleep_metrics = load_daily_sleep_metrics(context.oura.daily_sleep)
-    activity_metrics = load_daily_activity_metrics(context.oura.daily_activity)
-    sleep_model_metrics = load_sleep_model_metrics(context.oura.sleep_model)
+    readiness_metrics = load_daily_readiness_metrics(context.wearable.daily_readiness)
+    sleep_metrics = load_daily_sleep_metrics(context.wearable.daily_sleep)
+    activity_metrics = load_daily_activity_metrics(context.wearable.daily_activity)
+    sleep_model_metrics = load_sleep_model_metrics(context.wearable.sleep_model)
 
     for metric_map in (readiness_metrics, sleep_metrics, activity_metrics, sleep_model_metrics):
         _register_weekly_metrics(metric_map.items(), weekly_series)

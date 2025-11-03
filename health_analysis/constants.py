@@ -1,4 +1,4 @@
-"""Shared constants for Oura data analysis."""
+"""Shared constants for wearable and scale data analysis."""
 
 from __future__ import annotations
 

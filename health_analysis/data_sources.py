@@ -8,8 +8,8 @@ from typing import Iterable, Sequence
 
 
 @dataclass(frozen=True)
-class OuraPaths:
-    """Absolute paths to the Oura CSV exports we rely on."""
+class WearablePaths:
+    """Absolute paths to the wearable CSV exports we rely on (Oura format)."""
 
     daily_spo2: Path
     daily_readiness: Path
@@ -18,7 +18,7 @@ class OuraPaths:
     sleep_model: Path
 
     @classmethod
-    def from_directory(cls, directory: Path) -> "OuraPaths":
+    def from_directory(cls, directory: Path) -> "WearablePaths":
         base = directory.expanduser().resolve()
         return cls(
             daily_spo2=base / "dailyspo2.csv",
@@ -31,9 +31,9 @@ class OuraPaths:
 
 @dataclass(frozen=True)
 class DataContext:
-    """Resolved locations for Oura exports and optional scale files."""
+    """Resolved locations for wearable exports and optional scale files."""
 
-    oura: OuraPaths
+    wearable: WearablePaths
     body_files: list[Path]
 
 
@@ -126,8 +126,8 @@ def resolve_data_paths(
             "--hf-repo-id with --hf-oura-subdir."
         )
 
-    oura_paths = OuraPaths.from_directory(oura_dir)
-    if not oura_paths.daily_spo2.exists():
+    wearable_paths = WearablePaths.from_directory(oura_dir)
+    if not wearable_paths.daily_spo2.exists():
         raise SystemExit(
             f"dailyspo2.csv not found in {oura_dir}. Check that the export is complete."
         )
@@ -136,4 +136,4 @@ def resolve_data_paths(
     if not unique_body_files:
         print("Warning: no body composition files provided; body-weight plots will be skipped.")
 
-    return DataContext(oura=oura_paths, body_files=unique_body_files)
+    return DataContext(wearable=wearable_paths, body_files=unique_body_files)

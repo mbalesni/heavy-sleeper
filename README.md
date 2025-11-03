@@ -1,22 +1,22 @@
-# Oura Data Insights
+# Health Metrics Insights
 
 Utilities for exploring Oura Ring blood-oxygen (SpO₂) trends alongside sleep,
-activity, readiness, and Renpho scale measurements.
+activity, readiness, and readings from the Mi Body Composition Scale 2.
 
 ## Quick start
 
-The plotting workflow lives in `scripts/analyze_oura.py`. It expects:
+The analysis entrypoint is `analyze_health_metrics.py`. It expects:
 
 1. The `data/oura/` folder populated with the Oura export CSVs
    (`dailyspo2.csv`, `dailyreadiness.csv`, etc.).
-2. One or more scale CSVs (e.g. Renpho) supplied via the `--body-file`
+2. One or more scale CSVs (e.g. Mi Body Composition Scale 2) supplied via the `--body-file`
    flag—by default we use `data/scale/body.csv`.
 
 With [uv](https://github.com/astral-sh/uv) installed, you can regenerate every
 plot and correlation table with:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run scripts/analyze_oura.py \
+UV_CACHE_DIR=.uv-cache uv run analyze_health_metrics.py \
   --oura-app-data data/oura \
   --body-file data/scale/body.csv \
   --output-dir plots
@@ -42,7 +42,7 @@ repository—e.g. `your-account/oura-data` containing `oura/*.csv` and
 
 ```bash
 export HF_TOKEN=...  # set to a read token with access to the private repo
-UV_CACHE_DIR=.uv-cache uv run --with huggingface_hub scripts/analyze_oura.py \
+UV_CACHE_DIR=.uv-cache uv run --with huggingface_hub analyze_health_metrics.py \
   --hf-repo-id your-account/oura-data \
   --output-dir plots
 ```
