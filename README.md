@@ -4,6 +4,9 @@ This codebase stitches together several years of Oura Ring (Gen 3) sleep
 exports and Mi Body Composition Scale 2 weigh-ins to explore how restfulness
 and other sleep features move with weight, blood oxygenation, and similar metrics.
 
+> [!WARNING]
+> Fully vibe-coded using Codex CLI.
+
 ## Quick start
 
 The analysis entrypoint is `analyze_health_metrics.py`. It expects:
