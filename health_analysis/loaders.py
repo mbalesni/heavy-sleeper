@@ -9,7 +9,7 @@ from typing import Iterable
 
 import pandas as pd
 
-BODY_FIELDS = ("weight", "fatRate", "visceralFat")
+BODY_FIELDS = ("weight",)
 WEIGHT_MAX_KG = 68.0
 BODY_MIN_TIMESTAMP = pd.Timestamp("2020-11-11 19:06:26+00:00")
 
@@ -127,14 +127,19 @@ def load_daily_sleep_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
     if "score" in df.columns:
         values = pd.to_numeric(df["score"], errors="coerce")
         for day, value in zip(df["day"], values):
-            _append_metric(metrics, "Sleep Score", day, value)
+            _append_metric(metrics, "Oura: Sleep Score", day, value)
 
+    contributor_labels = {
+        "restfulness": "Oura: Restfulness Score",
+    }
     if "contributors" in df.columns:
         for day, payload in zip(df["day"], df["contributors"]):
             contributors = _load_json_dict(payload)
             for key, value in contributors.items():
                 numeric = _coerce_float(value)
-                label = f"Sleep Contributor: {key.replace('_', ' ').title()}"
+                label = contributor_labels.get(
+                    key, f"Sleep Contributor: {key.replace('_', ' ').title()}"
+                )
                 _append_metric(metrics, label, day, numeric)
 
     return metrics
@@ -173,13 +178,13 @@ def load_sleep_model_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
         return metrics
 
     duration_fields = {
-        "deep_sleep_duration": "Sleep Deep Sleep Duration (min)",
-        "total_sleep_duration": "Sleep Total Duration (min)",
-        "rem_sleep_duration": "Sleep REM Duration (min)",
-        "light_sleep_duration": "Sleep Light Duration (min)",
-        "awake_time": "Sleep Awake Time (min)",
-        "time_in_bed": "Sleep Time In Bed (min)",
-        "latency": "Sleep Latency (min)",
+        "deep_sleep_duration": "Oura: Deep Sleep Duration (min)",
+        "total_sleep_duration": "Oura: Total Sleep Duration (min)",
+        "rem_sleep_duration": "Oura: REM Duration (min)",
+        "light_sleep_duration": "Oura: Light Sleep Duration (min)",
+        "awake_time": "Oura: Awake Time (min)",
+        "time_in_bed": "Oura: Time In Bed (min)",
+        "latency": "Oura: Sleep Latency (min)",
     }
 
     for column, label in duration_fields.items():
@@ -190,9 +195,9 @@ def load_sleep_model_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
             _append_metric(metrics, label, day, value)
 
     value_fields = {
-        "efficiency": ("Sleep Efficiency (%)", 1.0),
-        "restless_periods": ("Sleep Restless Periods", 1.0),
-        "average_breath": ("Sleep Average Breath (rpm)", 1.0),
+        "efficiency": ("Oura: Efficiency (%)", 1.0),
+        "restless_periods": ("Oura: Restless Periods", 1.0),
+        "average_breath": ("Oura: Average Breath (rpm)", 1.0),
     }
     for column, (label, scale) in value_fields.items():
         if column not in df.columns:
@@ -204,7 +209,7 @@ def load_sleep_model_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
     if "movement_30_sec" in df.columns:
         df["movement_index"] = df["movement_30_sec"].apply(_parse_movement_series)
         for day, value in zip(df["day"], df["movement_index"]):
-            _append_metric(metrics, "Sleep Movement Index", day, value)
+            _append_metric(metrics, "Oura: Movement Index", day, value)
 
     return metrics
 

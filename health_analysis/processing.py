@@ -5,9 +5,17 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from datetime import date, timedelta
 import math
+from statistics import NormalDist
 from typing import Iterable
 
 import numpy as np
+
+try:  # Optional dependency for exact p-values
+    from scipy import stats as _scipy_stats
+except ImportError:  # pragma: no cover - SciPy is optional
+    _scipy_stats = None
+
+_NORMAL_DIST = NormalDist()
 
 
 def aggregate_daily(records: Iterable[tuple[date, float]]) -> tuple[list[date], list[float]]:
@@ -85,11 +93,51 @@ def align_weekly_series(
     return aligned_weeks, aligned_base, aligned_comparison
 
 
+def pearsonr_with_p(
+    values_a: Iterable[float], values_b: Iterable[float]
+) -> tuple[float, float | None, int]:
+    """Return Pearson r, two-tailed p-value, and sample size."""
+
+    arr_a = np.asarray(list(values_a), dtype=float)
+    arr_b = np.asarray(list(values_b), dtype=float)
+    if arr_a.shape != arr_b.shape:
+        raise ValueError("values_a and values_b must have the same length")
+
+    # Filter out NaNs to avoid propagating them into the correlation
+    mask = ~(np.isnan(arr_a) | np.isnan(arr_b))
+    arr_a = arr_a[mask]
+    arr_b = arr_b[mask]
+
+    n = int(arr_a.size)
+    if n == 0:
+        return float("nan"), None, 0
+
+    corr_matrix = np.corrcoef(arr_a, arr_b)
+    corr = float(corr_matrix[0, 1])
+
+    if n < 3 or not math.isfinite(corr):
+        return corr, None, n
+
+    if abs(corr) >= 1.0:
+        # Perfect correlation (typically due to identical series)
+        return math.copysign(1.0, corr), 0.0, n
+
+    if _scipy_stats is not None:  # pragma: no cover - SciPy optional
+        _, p_value = _scipy_stats.pearsonr(arr_a, arr_b)
+        return corr, float(p_value), n
+
+    # Fisher z-transform approximation (Normal) for the p-value
+    fisher_z = math.atanh(corr)
+    z_score = abs(fisher_z) * math.sqrt(max(n - 3, 1))
+    p_value = 2.0 * (1.0 - _NORMAL_DIST.cdf(z_score))
+    return corr, float(p_value), n
+
+
 def compute_pairwise_correlations(
     series: dict[str, tuple[list[date], list[float]]]
-) -> list[tuple[str, str, float, int]]:
+) -> list[tuple[str, str, float, float | None, int]]:
     metrics = list(series.keys())
-    results: list[tuple[str, str, float, int]] = []
+    results: list[tuple[str, str, float, float | None, int]] = []
 
     for index, metric_a in enumerate(metrics):
         weeks_a, values_a = series[metric_a]
@@ -113,9 +161,10 @@ def compute_pairwise_correlations(
 
             values_a_overlap = [map_a[week] for week in overlapping]
             values_b_overlap = [map_b[week] for week in overlapping]
-            corr_matrix = np.corrcoef(values_a_overlap, values_b_overlap)
-            corr = float(corr_matrix[0, 1])
-            results.append((metric_a, metric_b, corr, len(overlapping)))
+            corr, p_value, sample_size = pearsonr_with_p(values_a_overlap, values_b_overlap)
+            if sample_size < 2:
+                continue
+            results.append((metric_a, metric_b, corr, p_value, sample_size))
 
     return results
 
@@ -127,7 +176,7 @@ def compute_lagged_correlation(
     compare_values: list[float],
     *,
     lag_weeks: int = 1,
-) -> tuple[float | None, int]:
+) -> tuple[float | None, int, float | None]:
     lag_delta = timedelta(weeks=lag_weeks)
     base_map = {
         week: value
@@ -152,7 +201,7 @@ def compute_lagged_correlation(
         aligned_compare.append(target_value)
 
     if len(aligned_base) < 2:
-        return None, len(aligned_base)
+        return None, len(aligned_base), None
 
-    corr = float(np.corrcoef(aligned_base, aligned_compare)[0, 1])
-    return corr, len(aligned_base)
+    corr, p_value, sample_size = pearsonr_with_p(aligned_base, aligned_compare)
+    return corr, sample_size, p_value

@@ -16,12 +16,9 @@ class PlotPaths:
     weekly_spo2_rolling: Path
     weekly_spo2_vs_resting_hr: Path
     weekly_spo2_vs_weight: Path
-    weekly_spo2_vs_body_fat: Path
-    weekly_spo2_vs_visceral_fat: Path
+    weekly_spo2_vs_weight_all: Path
     weekly_restfulness_vs_weight: Path
-    weekly_restfulness_vs_body_fat: Path
-    weekly_deep_sleep_vs_visceral_fat: Path
-    weekly_deep_sleep_vs_visceral_fat_pre_cutoff: Path
+    weekly_deep_sleep_vs_weight: Path
     sleep_metric_dir: Path
     sleep_metric_heatmap: Path
 
@@ -35,13 +32,9 @@ def build_plot_paths(output_dir: Path) -> PlotPaths:
         weekly_spo2_rolling=output_dir / "weekly_spo2_rolling.png",
         weekly_spo2_vs_resting_hr=output_dir / "weekly_spo2_vs_resting_hr.png",
         weekly_spo2_vs_weight=output_dir / "weekly_spo2_vs_weight.png",
-        weekly_spo2_vs_body_fat=output_dir / "weekly_spo2_vs_body_fat.png",
-        weekly_spo2_vs_visceral_fat=output_dir / "weekly_spo2_vs_visceral_fat.png",
+        weekly_spo2_vs_weight_all=output_dir / "weekly_spo2_vs_weight_all.png",
         weekly_restfulness_vs_weight=output_dir / "weekly_restfulness_vs_weight.png",
-        weekly_restfulness_vs_body_fat=output_dir / "weekly_restfulness_vs_body_fat.png",
-        weekly_deep_sleep_vs_visceral_fat=output_dir / "weekly_deep_sleep_vs_visceral_fat.png",
-        weekly_deep_sleep_vs_visceral_fat_pre_cutoff=output_dir
-        / "weekly_deep_sleep_vs_visceral_fat_pre_cutoff.png",
+        weekly_deep_sleep_vs_weight=output_dir / "weekly_deep_sleep_vs_weight.png",
         sleep_metric_dir=sleep_metric_dir,
         sleep_metric_heatmap=output_dir / "sleep_metric_correlations.png",
     )
@@ -92,6 +85,7 @@ def plot_dual_series(
     secondary_color: str = "#d62728",
     marker: str = "o",
     markersize: float = 3.0,
+    stats_text: str | None = None,
 ) -> None:
     plt.figure(figsize=(12, 5))
     ax1 = plt.gca()
@@ -123,7 +117,10 @@ def plot_dual_series(
     ax2.set_ylabel(f"{secondary_label} ({secondary_unit})", color=secondary_color)
     ax2.tick_params(axis="y", labelcolor=secondary_color)
 
-    plt.title(f"Weekly Averages: {primary_label} vs {secondary_label}")
+    title = f"Weekly Averages: {primary_label} vs {secondary_label}"
+    if stats_text:
+        title = f"{title}\n{stats_text}"
+    plt.title(title)
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close()
@@ -134,6 +131,8 @@ def plot_correlation_heatmap(
     row_labels: list[str],
     column_labels: list[str],
     output_path: Path,
+    *,
+    p_values: np.ndarray | None = None,
 ) -> None:
     fig_width = max(6, len(column_labels) * 1.5)
     fig_height = max(4, len(row_labels) * 0.9)
@@ -154,10 +153,23 @@ def plot_correlation_heatmap(
             value = matrix[row_idx, col_idx]
             if np.isnan(value):
                 continue
+            text = f"r={value:.2f}"
+            if p_values is not None:
+                p_value = p_values[row_idx, col_idx]
+                if np.isnan(p_value):
+                    text += "\np=?"
+                elif p_value < 0.0001:
+                    text += "\np<0.0001"
+                elif p_value < 0.001:
+                    text += "\np<0.001"
+                elif p_value < 0.01:
+                    text += f"\np={p_value:.3f}"
+                else:
+                    text += f"\np={p_value:.4f}"
             ax.text(
                 col_idx,
                 row_idx,
-                f"{value:.2f}",
+                text,
                 ha="center",
                 va="center",
                 color="black",

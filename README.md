@@ -26,11 +26,12 @@ and `--body-file` when you want to analyse alternate exports.
 The script produces:
 
 - Daily SpO₂ and a rolling 7-day average.
-- Weekly comparisons between SpO₂ and body metrics (weight, body fat %, visceral fat).
+- Weekly comparisons between SpO₂ and weight.
 - Weekly SpO₂ vs resting heart rate.
-- Weekly restfulness vs body metrics.
-- Weekly deep sleep duration vs visceral fat (including a pre-cutoff view).
-- Pearson correlations (standard and 1-week lead/lag relationships) across all aligned metrics.
+- Weekly restfulness vs weight.
+- Weekly deep sleep duration vs weight.
+- Sleep-metric plots and a correlation heatmap covering Oura efficiency, restfulness, deep/REM/light duration, restless periods, awake time, movement, breathing rate, and their relationships with SpO₂, weight, and resting HR.
+- Pearson correlations (standard and 1-week lead/lag relationships) across all aligned metrics, including p-values and significance markers.
 
 All output PNGs land in the directory provided via `--output-dir` (default
 `plots/`). Re-run the command whenever you refresh your exports.
