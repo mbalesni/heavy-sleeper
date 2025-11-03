@@ -30,6 +30,7 @@ OURA_SLEEP_METRIC_UNITS: dict[str, str] = {
     "Average Breath Rate (rpm)": "rpm",
     "Deep Sleep Duration (min)": "min",
     "Restfulness Score": "score",
+    "Sleep Score": "score",
     "Resting HR (bpm)": "bpm",
 }
 
