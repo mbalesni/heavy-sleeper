@@ -93,6 +93,40 @@ def align_weekly_series(
     return aligned_weeks, aligned_base, aligned_comparison
 
 
+def align_lagged_series(
+    base_weeks: list[date],
+    base_values: list[float],
+    compare_weeks: list[date],
+    compare_values: list[float],
+    *,
+    lag_weeks: int = 1,
+) -> tuple[list[float], list[float]]:
+    lag_delta = timedelta(weeks=lag_weeks)
+    base_map = {
+        week: value
+        for week, value in zip(base_weeks, base_values)
+        if value is not None and not math.isnan(value)
+    }
+    compare_map = {
+        week: value
+        for week, value in zip(compare_weeks, compare_values)
+        if value is not None and not math.isnan(value)
+    }
+
+    aligned_base: list[float] = []
+    aligned_compare: list[float] = []
+
+    for week, value in base_map.items():
+        target_week = week + lag_delta
+        target_value = compare_map.get(target_week)
+        if target_value is None or math.isnan(target_value):
+            continue
+        aligned_base.append(value)
+        aligned_compare.append(target_value)
+
+    return aligned_base, aligned_compare
+
+
 def pearsonr_with_p(
     values_a: Iterable[float], values_b: Iterable[float]
 ) -> tuple[float, float | None, int]:
@@ -177,28 +211,13 @@ def compute_lagged_correlation(
     *,
     lag_weeks: int = 1,
 ) -> tuple[float | None, int, float | None]:
-    lag_delta = timedelta(weeks=lag_weeks)
-    base_map = {
-        week: value
-        for week, value in zip(base_weeks, base_values)
-        if value is not None and not math.isnan(value)
-    }
-    compare_map = {
-        week: value
-        for week, value in zip(compare_weeks, compare_values)
-        if value is not None and not math.isnan(value)
-    }
-
-    aligned_base: list[float] = []
-    aligned_compare: list[float] = []
-
-    for week, value in base_map.items():
-        target_week = week + lag_delta
-        target_value = compare_map.get(target_week)
-        if target_value is None or math.isnan(target_value):
-            continue
-        aligned_base.append(value)
-        aligned_compare.append(target_value)
+    aligned_base, aligned_compare = align_lagged_series(
+        base_weeks,
+        base_values,
+        compare_weeks,
+        compare_values,
+        lag_weeks=lag_weeks,
+    )
 
     if len(aligned_base) < 2:
         return None, len(aligned_base), None

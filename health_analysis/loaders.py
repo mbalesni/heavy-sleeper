@@ -9,9 +9,15 @@ from typing import Iterable
 
 import pandas as pd
 
+from .constants import DEVICE_OURA, format_metric
+
 BODY_FIELDS = ("weight",)
 WEIGHT_MAX_KG = 68.0
 BODY_MIN_TIMESTAMP = pd.Timestamp("2020-11-11 19:06:26+00:00")
+
+
+def _oura_label(name: str) -> str:
+    return format_metric(name, DEVICE_OURA)
 
 
 def load_spo2_records(path: Path) -> list[tuple[date, float]]:
@@ -96,9 +102,12 @@ def load_daily_readiness_metrics(path: Path) -> dict[str, list[tuple[date, float
         return metrics
 
     readiness_fields = [
-        ("score", "Readiness Score"),
-        ("temperature_deviation", "Readiness Temperature Deviation"),
-        ("temperature_trend_deviation", "Readiness Temperature Trend Deviation"),
+        ("score", _oura_label("Readiness Score")),
+        ("temperature_deviation", _oura_label("Readiness Temperature Deviation")),
+        (
+            "temperature_trend_deviation",
+            _oura_label("Readiness Temperature Trend Deviation"),
+        ),
     ]
     for column, label in readiness_fields:
         if column not in df.columns:
@@ -112,7 +121,9 @@ def load_daily_readiness_metrics(path: Path) -> dict[str, list[tuple[date, float
             contributors = _load_json_dict(payload)
             for key, value in contributors.items():
                 numeric = _coerce_float(value)
-                label = f"Readiness Contributor: {key.replace('_', ' ').title()}"
+                label = _oura_label(
+                    f"Readiness Contributor: {key.replace('_', ' ').title()}"
+                )
                 _append_metric(metrics, label, day, numeric)
 
     return metrics
@@ -127,10 +138,10 @@ def load_daily_sleep_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
     if "score" in df.columns:
         values = pd.to_numeric(df["score"], errors="coerce")
         for day, value in zip(df["day"], values):
-            _append_metric(metrics, "Oura: Sleep Score", day, value)
+            _append_metric(metrics, _oura_label("Sleep Score"), day, value)
 
     contributor_labels = {
-        "restfulness": "Oura: Restfulness Score",
+        "restfulness": _oura_label("Restfulness Score"),
     }
     if "contributors" in df.columns:
         for day, payload in zip(df["day"], df["contributors"]):
@@ -138,7 +149,8 @@ def load_daily_sleep_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
             for key, value in contributors.items():
                 numeric = _coerce_float(value)
                 label = contributor_labels.get(
-                    key, f"Sleep Contributor: {key.replace('_', ' ').title()}"
+                    key,
+                    _oura_label(f"{key.replace('_', ' ').title()} Contributor Score"),
                 )
                 _append_metric(metrics, label, day, numeric)
 
@@ -156,7 +168,7 @@ def load_daily_activity_metrics(path: Path) -> dict[str, list[tuple[date, float]
         if column in exclude:
             continue
         values = pd.to_numeric(df[column], errors="coerce")
-        label = f"Activity {column.replace('_', ' ').title()}"
+        label = _oura_label(f"Activity {column.replace('_', ' ').title()}")
         for day, value in zip(df["day"], values):
             _append_metric(metrics, label, day, value)
 
@@ -165,7 +177,9 @@ def load_daily_activity_metrics(path: Path) -> dict[str, list[tuple[date, float]
             contributors = _load_json_dict(payload)
             for key, value in contributors.items():
                 numeric = _coerce_float(value)
-                label = f"Activity Contributor: {key.replace('_', ' ').title()}"
+                label = _oura_label(
+                    f"Activity Contributor: {key.replace('_', ' ').title()}"
+                )
                 _append_metric(metrics, label, day, numeric)
 
     return metrics
@@ -178,13 +192,13 @@ def load_sleep_model_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
         return metrics
 
     duration_fields = {
-        "deep_sleep_duration": "Oura: Deep Sleep Duration (min)",
-        "total_sleep_duration": "Oura: Total Sleep Duration (min)",
-        "rem_sleep_duration": "Oura: REM Duration (min)",
-        "light_sleep_duration": "Oura: Light Sleep Duration (min)",
-        "awake_time": "Oura: Awake Time (min)",
-        "time_in_bed": "Oura: Time In Bed (min)",
-        "latency": "Oura: Sleep Latency (min)",
+        "deep_sleep_duration": "Deep Sleep Duration (min)",
+        "total_sleep_duration": "Total Sleep Duration (min)",
+        "rem_sleep_duration": "REM Sleep Duration (min)",
+        "light_sleep_duration": "Light Sleep Duration (min)",
+        "awake_time": "Awake Time (min)",
+        "time_in_bed": "Time In Bed (min)",
+        "latency": "Sleep Latency (min)",
     }
 
     for column, label in duration_fields.items():
@@ -192,24 +206,24 @@ def load_sleep_model_metrics(path: Path) -> dict[str, list[tuple[date, float]]]:
             continue
         values = pd.to_numeric(df[column], errors="coerce") / 60.0
         for day, value in zip(df["day"], values):
-            _append_metric(metrics, label, day, value)
+            _append_metric(metrics, _oura_label(label), day, value)
 
     value_fields = {
-        "efficiency": ("Oura: Efficiency (%)", 1.0),
-        "restless_periods": ("Oura: Restless Periods", 1.0),
-        "average_breath": ("Oura: Average Breath (rpm)", 1.0),
+        "efficiency": ("Efficiency (%)", 1.0),
+        "restless_periods": ("Restless Periods", 1.0),
+        "average_breath": ("Average Breath Rate (rpm)", 1.0),
     }
     for column, (label, scale) in value_fields.items():
         if column not in df.columns:
             continue
         values = pd.to_numeric(df[column], errors="coerce") * scale
         for day, value in zip(df["day"], values):
-            _append_metric(metrics, label, day, value)
+            _append_metric(metrics, _oura_label(label), day, value)
 
     if "movement_30_sec" in df.columns:
         df["movement_index"] = df["movement_30_sec"].apply(_parse_movement_series)
         for day, value in zip(df["day"], df["movement_index"]):
-            _append_metric(metrics, "Oura: Movement Index", day, value)
+            _append_metric(metrics, _oura_label("Movement Index"), day, value)
 
     return metrics
 
