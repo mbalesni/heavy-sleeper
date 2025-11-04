@@ -1,6 +1,6 @@
 # My sleep quality vs weight
 
-This codebase stitches together several years of Oura Ring (Gen 3) sleep
+This codebase stitches together several years of Oura Ring (Gen 2 and 3) sleep
 exports and Mi Body Composition Scale 2 weigh-ins to explore how restfulness
 and other sleep features move with weight, blood oxygenation, and similar metrics.
 
